@@ -10,6 +10,10 @@ export interface Product {
   image?: string;
   category?: string;
   description?: string;
+  upc?: string;
+  inStock?: boolean;
+  stockLevel?: string; // 'In Stock' | 'Out of Stock' | 'Low Stock'
+  aisle?: string;
 }
 
 export interface ListItem {
@@ -18,6 +22,8 @@ export interface ListItem {
   quantity: number;
   checked: boolean;
   notes?: string;
+  alternatives?: Product[];
+  selectedAlternativeId?: string;
 }
 
 export interface GroceryList {

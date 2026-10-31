@@ -99,7 +99,13 @@ export class StorageService {
   /**
    * Add item to list
    */
-  static async addItemToList(listId: string, product: Product, quantity: number = 1): Promise<void> {
+  static async addItemToList(
+    listId: string,
+    product: Product,
+    quantity: number = 1,
+    notes?: string,
+    alternatives?: Product[]
+  ): Promise<void> {
     try {
       const list = await this.getList(listId);
       if (!list) return;
@@ -108,12 +114,24 @@ export class StorageService {
 
       if (existingItem) {
         existingItem.quantity += quantity;
+        if (notes) existingItem.notes = notes;
+        if (alternatives && alternatives.length > 0) {
+          const currentAlts = existingItem.alternatives || [];
+          for (const alt of alternatives) {
+            if (!currentAlts.some(a => a.id === alt.id)) {
+              currentAlts.push(alt);
+            }
+          }
+          existingItem.alternatives = currentAlts;
+        }
       } else {
         const newItem: ListItem = {
           id: Date.now().toString(),
           product,
           quantity,
           checked: false,
+          notes,
+          alternatives: alternatives || [],
         };
         list.items.push(newItem);
       }
@@ -138,6 +156,116 @@ export class StorageService {
       await this.updateList(list);
     } catch (error) {
       console.error('Error removing item:', error);
+    }
+  }
+
+  /**
+   * Update item quantity
+   */
+  static async updateItemQuantity(listId: string, itemId: string, quantity: number): Promise<void> {
+    try {
+      const list = await this.getList(listId);
+      if (!list) return;
+
+      const item = list.items.find(i => i.id === itemId);
+      if (item) {
+        if (quantity <= 0) {
+          await this.removeItemFromList(listId, itemId);
+          return;
+        }
+        item.quantity = quantity;
+        this.updateListTotalPrice(list);
+        await this.updateList(list);
+      }
+    } catch (error) {
+      console.error('Error updating item quantity:', error);
+    }
+  }
+
+  /**
+   * Add an alternative/substitute option to an item
+   */
+  static async addAlternativeToItem(
+    listId: string,
+    itemId: string,
+    alternativeProduct: Product
+  ): Promise<void> {
+    try {
+      const list = await this.getList(listId);
+      if (!list) return;
+
+      const item = list.items.find(i => i.id === itemId);
+      if (item) {
+        if (!item.alternatives) {
+          item.alternatives = [];
+        }
+        // Avoid adding the primary item or duplicate alternatives
+        if (
+          item.product.id !== alternativeProduct.id &&
+          !item.alternatives.some(alt => alt.id === alternativeProduct.id)
+        ) {
+          item.alternatives.push(alternativeProduct);
+          await this.updateList(list);
+        }
+      }
+    } catch (error) {
+      console.error('Error adding alternative to item:', error);
+    }
+  }
+
+  /**
+   * Remove an alternative option from an item
+   */
+  static async removeAlternativeFromItem(
+    listId: string,
+    itemId: string,
+    alternativeProductId: string
+  ): Promise<void> {
+    try {
+      const list = await this.getList(listId);
+      if (!list) return;
+
+      const item = list.items.find(i => i.id === itemId);
+      if (item && item.alternatives) {
+        item.alternatives = item.alternatives.filter(alt => alt.id !== alternativeProductId);
+        if (item.selectedAlternativeId === alternativeProductId) {
+          item.selectedAlternativeId = undefined;
+        }
+        await this.updateList(list);
+      }
+    } catch (error) {
+      console.error('Error removing alternative from item:', error);
+    }
+  }
+
+  /**
+   * Swap an alternative product into the primary product position
+   */
+  static async swapWithAlternative(
+    listId: string,
+    itemId: string,
+    alternativeProductId: string
+  ): Promise<void> {
+    try {
+      const list = await this.getList(listId);
+      if (!list) return;
+
+      const item = list.items.find(i => i.id === itemId);
+      if (item && item.alternatives) {
+        const altIndex = item.alternatives.findIndex(alt => alt.id === alternativeProductId);
+        if (altIndex !== -1) {
+          const oldPrimary = item.product;
+          const newPrimary = item.alternatives[altIndex];
+          // Replace alternative with old primary
+          item.alternatives[altIndex] = oldPrimary;
+          item.product = newPrimary;
+          item.selectedAlternativeId = undefined;
+          this.updateListTotalPrice(list);
+          await this.updateList(list);
+        }
+      }
+    } catch (error) {
+      console.error('Error swapping alternative:', error);
     }
   }
 
